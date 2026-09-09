@@ -703,7 +703,7 @@ class MyWindow(QMainWindow,Ui_client):
 
 class challengeWindow(QMainWindow, Ui_challenges):
     # tab index -> challenge id ("" means not implemented yet)
-    CHALLENGE_IDS = ["target_tracking", "", "", "", ""]
+    CHALLENGE_IDS = ["target_tracking", "qr_scan", "", "", ""]
 
     def __init__(self, client):
         super(challengeWindow, self).__init__()
