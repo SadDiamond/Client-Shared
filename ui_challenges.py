@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 
-# Form implementation generated from reading ui file 'Code/Client/Challenges.ui'
+# Form implementation generated from reading ui file 'Challenges.ui'
 #
 # Created by: PyQt5 UI code generator 5.15.11
 #
@@ -14,7 +14,7 @@ from PyQt5 import QtCore, QtGui, QtWidgets
 class Ui_challenges(object):
     def setupUi(self, challenges):
         challenges.setObjectName("challenges")
-        challenges.resize(360, 320)
+        challenges.resize(661, 320)
         challenges.setStyleSheet("QWidget{\n"
 "background:#484848;\n"
 "}\n"
@@ -96,7 +96,7 @@ class Ui_challenges(object):
         self.slider_tt_speed.setMinimum(1)
         self.slider_tt_speed.setMaximum(10)
         self.slider_tt_speed.setProperty("value", 5)
-        self.slider_tt_speed.setOrientation(QtCore.Qt.Horizontal)
+        self.slider_stop_distance.setOrientation(QtCore.Qt.Horizontal)
         self.slider_tt_speed.setObjectName("slider_tt_speed")
         self.row_speed.addWidget(self.slider_tt_speed)
         self.label_tt_speed_value = QtWidgets.QLabel(self.tab_target_tracking)
@@ -119,7 +119,7 @@ class Ui_challenges(object):
         self.label_tt_color_swatch.setObjectName("label_tt_color_swatch")
         self.row_color.addWidget(self.label_tt_color_swatch)
         self.verticalLayout_tt.addLayout(self.row_color)
-        spacerItem = QtWidgets.QSpacerItem(QtWidgets.QSizePolicy.Minimum, QtWidgets.QSizePolicy.Expanding)
+        spacerItem = QtWidgets.QSpacerItem(0, 0, QtWidgets.QSizePolicy.Minimum, QtWidgets.QSizePolicy.Expanding)
         self.verticalLayout_tt.addItem(spacerItem)
         self.tabWidget.addTab(self.tab_target_tracking, "")
         self.tab_challenge_2 = QtWidgets.QWidget()
@@ -129,6 +129,10 @@ class Ui_challenges(object):
         self.label_c2_placeholder = QtWidgets.QLabel(self.tab_challenge_2)
         self.label_c2_placeholder.setObjectName("label_c2_placeholder")
         self.verticalLayout_c2.addWidget(self.label_c2_placeholder)
+        self.label_qr_data = QtWidgets.QLabel(self.tab_challenge_2)
+        self.label_qr_data.setText("")
+        self.label_qr_data.setObjectName("label_qr_data")
+        self.verticalLayout_c2.addWidget(self.label_qr_data)
         self.tabWidget.addTab(self.tab_challenge_2, "")
         self.tab_challenge_3 = QtWidgets.QWidget()
         self.tab_challenge_3.setObjectName("tab_challenge_3")
@@ -185,8 +189,8 @@ class Ui_challenges(object):
         self.label_tt_color_name.setText(_translate("challenges", "Target color"))
         self.Button_TT_Color.setText(_translate("challenges", "Pick Color..."))
         self.tabWidget.setTabText(self.tabWidget.indexOf(self.tab_target_tracking), _translate("challenges", "Target Tracking"))
-        self.label_c2_placeholder.setText(_translate("challenges", "Not yet implemented."))
-        self.tabWidget.setTabText(self.tabWidget.indexOf(self.tab_challenge_2), _translate("challenges", "Challenge 2"))
+        self.label_c2_placeholder.setText(_translate("challenges", "Point the Pi\'s camera at a QR code and press Start."))
+        self.tabWidget.setTabText(self.tabWidget.indexOf(self.tab_challenge_2), _translate("challenges", "QR Scan"))
         self.label_c3_placeholder.setText(_translate("challenges", "Not yet implemented."))
         self.tabWidget.setTabText(self.tabWidget.indexOf(self.tab_challenge_3), _translate("challenges", "Challenge 3"))
         self.label_c4_placeholder.setText(_translate("challenges", "Not yet implemented."))

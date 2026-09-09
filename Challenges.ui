@@ -207,15 +207,22 @@ color:#000000;
         </item>
        </layout>
       </widget>
-      <widget class="QWidget" name="tab_challenge_2">
+            <widget class="QWidget" name="tab_challenge_2">
        <attribute name="title">
-        <string>Challenge 2</string>
+        <string>QR Scan</string>
        </attribute>
        <layout class="QVBoxLayout" name="verticalLayout_c2">
         <item>
          <widget class="QLabel" name="label_c2_placeholder">
           <property name="text">
-           <string>Not yet implemented.</string>
+           <string>Point the Pi's camera at a QR code and press Start.</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QLabel" name="label_qr_data">
+          <property name="text">
+           <string/>
           </property>
          </widget>
         </item>
