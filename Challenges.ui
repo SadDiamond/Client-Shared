@@ -1,0 +1,301 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>challenges</class>
+ <widget class="QMainWindow" name="challenges">
+  <property name="geometry">
+   <rect>
+    <x>0</x>
+    <y>0</y>
+    <width>661</width>
+    <height>320</height>
+   </rect>
+  </property>
+  <property name="windowTitle">
+   <string>Challenges</string>
+  </property>
+  <property name="styleSheet">
+   <string notr="true">QWidget{
+background:#484848;
+}
+QAbstractButton{
+border-style:none;
+border-radius:0px;
+padding:5px;
+color:#DCDCDC;
+background:qlineargradient(spread:pad,x1:0,y1:0,x2:0,y2:1,stop:0 #858585,stop:1 #383838);
+}
+QAbstractButton:hover{
+color:#000000;
+background-color:#008aff;
+}
+QAbstractButton:pressed{
+color:#DCDCDC;
+border-style:solid;
+border-width:0px 0px 0px 4px;
+padding:4px 4px 4px 2px;
+border-color:#008aff;
+background-color:#444444;
+}
+QAbstractButton:disabled{
+color:#787878;
+background-color:#585858;
+}
+QLabel{
+color:#DCDCDC;
+}
+QTabWidget::pane{
+border:1px solid #383838;
+}
+QTabBar::tab{
+color:#DCDCDC;
+background:#383838;
+padding:6px 10px;
+}
+QTabBar::tab:selected{
+background:#008aff;
+color:#000000;
+}</string>
+  </property>
+  <widget class="QWidget" name="centralwidget">
+   <layout class="QVBoxLayout" name="verticalLayout">
+    <item>
+     <widget class="QLabel" name="label_hint">
+      <property name="text">
+       <string>Pick a challenge tab, set its options, then Start.</string>
+      </property>
+      <property name="wordWrap">
+       <bool>true</bool>
+      </property>
+     </widget>
+    </item>
+    <item>
+     <widget class="QTabWidget" name="tabWidget">
+      <property name="currentIndex">
+       <number>0</number>
+      </property>
+      <widget class="QWidget" name="tab_target_tracking">
+       <attribute name="title">
+        <string>Target Tracking</string>
+       </attribute>
+       <layout class="QVBoxLayout" name="verticalLayout_tt">
+        <item>
+         <layout class="QHBoxLayout" name="row_stop_distance">
+          <item>
+           <widget class="QLabel" name="label_stop_distance_name">
+            <property name="text">
+             <string>Stop distance (cm)</string>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QSlider" name="slider_stop_distance">
+            <property name="minimum">
+             <number>10</number>
+            </property>
+            <property name="maximum">
+             <number>100</number>
+            </property>
+            <property name="value">
+             <number>30</number>
+            </property>
+            <property name="orientation">
+             <enum>Qt::Orientation::Horizontal</enum>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QLabel" name="label_stop_distance_value">
+            <property name="minimumSize">
+             <size>
+              <width>30</width>
+              <height>0</height>
+             </size>
+            </property>
+            <property name="text">
+             <string>30</string>
+            </property>
+           </widget>
+          </item>
+         </layout>
+        </item>
+        <item>
+         <layout class="QHBoxLayout" name="row_speed">
+          <item>
+           <widget class="QLabel" name="label_tt_speed_name">
+            <property name="text">
+             <string>Tracking speed</string>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QSlider" name="slider_tt_speed">
+            <property name="minimum">
+             <number>1</number>
+            </property>
+            <property name="maximum">
+             <number>10</number>
+            </property>
+            <property name="value">
+             <number>5</number>
+            </property>
+            <property name="orientation">
+             <enum>Qt::Orientation::Horizontal</enum>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QLabel" name="label_tt_speed_value">
+            <property name="minimumSize">
+             <size>
+              <width>30</width>
+              <height>0</height>
+             </size>
+            </property>
+            <property name="text">
+             <string>5</string>
+            </property>
+           </widget>
+          </item>
+         </layout>
+        </item>
+        <item>
+         <layout class="QHBoxLayout" name="row_color">
+          <item>
+           <widget class="QLabel" name="label_tt_color_name">
+            <property name="text">
+             <string>Target color</string>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QPushButton" name="Button_TT_Color">
+            <property name="text">
+             <string>Pick Color...</string>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QLabel" name="label_tt_color_swatch">
+            <property name="minimumSize">
+             <size>
+              <width>30</width>
+              <height>20</height>
+             </size>
+            </property>
+            <property name="styleSheet">
+             <string notr="true">background-color:#ff0000; border:1px solid #DCDCDC;</string>
+            </property>
+            <property name="text">
+             <string/>
+            </property>
+           </widget>
+          </item>
+         </layout>
+        </item>
+        <item>
+         <spacer name="verticalSpacer_tt">
+          <property name="orientation">
+           <enum>Qt::Orientation::Vertical</enum>
+          </property>
+          <property name="sizeHint" stdset="0">
+           <size>
+            <width>0</width>
+            <height>0</height>
+           </size>
+          </property>
+         </spacer>
+        </item>
+       </layout>
+      </widget>
+      <widget class="QWidget" name="tab_challenge_2">
+       <attribute name="title">
+        <string>Challenge 2</string>
+       </attribute>
+       <layout class="QVBoxLayout" name="verticalLayout_c2">
+        <item>
+         <widget class="QLabel" name="label_c2_placeholder">
+          <property name="text">
+           <string>Not yet implemented.</string>
+          </property>
+         </widget>
+        </item>
+       </layout>
+      </widget>
+      <widget class="QWidget" name="tab_challenge_3">
+       <attribute name="title">
+        <string>Challenge 3</string>
+       </attribute>
+       <layout class="QVBoxLayout" name="verticalLayout_c3">
+        <item>
+         <widget class="QLabel" name="label_c3_placeholder">
+          <property name="text">
+           <string>Not yet implemented.</string>
+          </property>
+         </widget>
+        </item>
+       </layout>
+      </widget>
+      <widget class="QWidget" name="tab_challenge_4">
+       <attribute name="title">
+        <string>Challenge 4</string>
+       </attribute>
+       <layout class="QVBoxLayout" name="verticalLayout_c4">
+        <item>
+         <widget class="QLabel" name="label_c4_placeholder">
+          <property name="text">
+           <string>Not yet implemented.</string>
+          </property>
+         </widget>
+        </item>
+       </layout>
+      </widget>
+      <widget class="QWidget" name="tab_challenge_5">
+       <attribute name="title">
+        <string>Challenge 5</string>
+       </attribute>
+       <layout class="QVBoxLayout" name="verticalLayout_c5">
+        <item>
+         <widget class="QLabel" name="label_c5_placeholder">
+          <property name="text">
+           <string>Not yet implemented.</string>
+          </property>
+         </widget>
+        </item>
+       </layout>
+      </widget>
+     </widget>
+    </item>
+    <item>
+     <layout class="QHBoxLayout" name="buttonRow">
+      <item>
+       <widget class="QPushButton" name="Button_Start">
+        <property name="text">
+         <string>Start</string>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QPushButton" name="Button_Stop">
+        <property name="enabled">
+         <bool>false</bool>
+        </property>
+        <property name="text">
+         <string>Stop</string>
+        </property>
+       </widget>
+      </item>
+     </layout>
+    </item>
+    <item>
+     <widget class="QLabel" name="label_status">
+      <property name="text">
+       <string>Idle</string>
+      </property>
+     </widget>
+    </item>
+   </layout>
+  </widget>
+ </widget>
+ <resources/>
+ <connections/>
+</ui>
