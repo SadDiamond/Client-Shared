@@ -677,11 +677,17 @@ class MyWindow(QMainWindow,Ui_client):
     # Challenges
     def showChallengesWindow(self):
         try:
-            if self.challengeWindow is None:
-                self.challengeWindow = challengeWindow(self.client)
+            # Re-showing this window (e.g. pressing 'G' again, or clicking
+            # Challenges twice) previously always built a brand-new
+            # challengeWindow, silently discarding whatever colour/settings
+            # the user had already picked in the one still open - reuse the
+            # existing window instead of replacing it.
+            if self.challengeWindow is not None and self.challengeWindow.isVisible():
+                self.challengeWindow.raise_()
+                self.challengeWindow.activateWindow()
+                return
+            self.challengeWindow = challengeWindow(self.client)
             self.challengeWindow.show()
-            self.challengeWindow.raise_()
-            self.challengeWindow.activateWindow()
         except Exception as e:
             print(e)
 
@@ -705,50 +711,45 @@ class MyWindow(QMainWindow,Ui_client):
             self.client.video_flag = True
 
 class challengeWindow(QMainWindow, Ui_challenges):
-    # tab index -> challenge id ("" means not implemented yet)
-    CHALLENGE_IDS = ["target_tracking", "qr_scan", "", "", ""]
-
     def __init__(self, client):
         super(challengeWindow, self).__init__()
         self.setupUi(self)
         self.client = client
         self.setWindowIcon(QIcon('Picture/logo_Mini.png'))
 
-        self.tt_color = [255, 0, 0]
+        # matches the swatch's default stylesheet colour (#ff0000)
+        self.target_color = QColor(255, 0, 0)
 
+        self.slider_stop_distance.valueChanged.connect(self.on_stop_distance_changed)
+        self.slider_tt_speed.valueChanged.connect(self.on_speed_changed)
+        self.Button_TT_Color.clicked.connect(self.pick_color)
         self.Button_Start.clicked.connect(self.start)
         self.Button_Stop.clicked.connect(self.stop)
-        self.slider_stop_distance.valueChanged.connect(
-            lambda v: self.label_stop_distance_value.setText(str(v)))
-        self.slider_tt_speed.valueChanged.connect(
-            lambda v: self.label_tt_speed_value.setText(str(v)))
-        self.Button_TT_Color.clicked.connect(self.pickTargetColor)
 
-    def pickTargetColor(self):
-        color = QColorDialog.getColor(QColor(*self.tt_color), self, "Target Color")
+    def on_stop_distance_changed(self, value):
+        self.label_stop_distance_value.setText(str(value))
+
+    def on_speed_changed(self, value):
+        self.label_tt_speed_value.setText(str(value))
+
+    def pick_color(self):
+        color = QColorDialog.getColor(self.target_color, self, "Pick target color")
         if color.isValid():
-            self.tt_color = [color.red(), color.green(), color.blue()]
+            self.target_color = color
             self.label_tt_color_swatch.setStyleSheet(
-                "background-color:%s; border:1px solid #DCDCDC;" % color.name())
-
-    def selected_challenge(self):
-        index = self.tabWidget.currentIndex()
-        return self.CHALLENGE_IDS[index] or None
+                "background-color:" + color.name() + "; border:1px solid #DCDCDC;")
 
     def start(self):
-        challenge = self.selected_challenge()
-        if challenge is None:
-            self.label_status.setText("Not yet implemented")
+        if self.tabWidget.currentIndex() != 0:
+            self.label_status.setText("This challenge isn't implemented yet.")
             return
-        if challenge == "target_tracking":
-            params = "#" + str(self.slider_stop_distance.value()) \
-                     + "#" + "#".join(str(c) for c in self.tt_color) \
-                     + "#" + str(self.slider_tt_speed.value())
-        else:
-            params = ""
-        command = cmd.CMD_CHALLENGE + "#start#" + challenge + params + '\n'
+        stop_distance = self.slider_stop_distance.value()
+        speed = self.slider_tt_speed.value()
+        r, g, b = self.target_color.red(), self.target_color.green(), self.target_color.blue()
+        command = (cmd.CMD_CHALLENGE + "#start#target_tracking#"
+                   + str(stop_distance) + "#" + str(r) + "#" + str(g) + "#" + str(b) + "#" + str(speed) + '\n')
         self.client.send_data(command)
-        self.label_status.setText("Starting " + challenge + "...")
+        self.label_status.setText("Starting target_tracking...")
         self.Button_Start.setEnabled(False)
         self.Button_Stop.setEnabled(True)
 
@@ -759,9 +760,16 @@ class challengeWindow(QMainWindow, Ui_challenges):
 
     def on_server_message(self, data):
         # data is the split reply, e.g. ['CMD_CHALLENGE', 'started', 'target_tracking']
+        # or a live status update: ['CMD_CHALLENGE', 'status', '<state>', '<found 1/0>']
         if len(data) < 2:
             return
         status = data[1]
+        if status == "status":
+            state = data[2] if len(data) > 2 else ""
+            found = data[3] if len(data) > 3 else ""
+            found_text = "FOUND" if found == "1" else "searching..."
+            self.label_status.setText(found_text + " (" + state + ")")
+            return
         detail = data[2] if len(data) > 2 else ""
         self.label_status.setText((status + " " + detail).strip())
         if status == "started":
