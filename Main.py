@@ -811,7 +811,7 @@ class DebugStreamWindow(QMainWindow):
 
 class challengeWindow(QMainWindow, Ui_challenges):
     # tab index -> challenge id ("" means not implemented yet)
-    CHALLENGE_IDS = ["target_tracking", "qr_scan", "", "", ""]
+    CHALLENGE_IDS = ["target_tracking", "qr_scan", "follow_object", "", ""]
     # challenge id -> its DebugStreamServer port. Each challenge that runs
     # one must use its own port - two challenges sharing a port raced
     # against each other on switch (the old server hadn't always released
@@ -835,6 +835,36 @@ class challengeWindow(QMainWindow, Ui_challenges):
         self.slider_tt_speed.valueChanged.connect(
             lambda v: self.label_tt_speed_value.setText(str(v)))
         self.Button_TT_Color.clicked.connect(self.pickTargetColor)
+        self.setupFollowObjectTab()
+
+    def setupFollowObjectTab(self):
+        # Built here rather than in Challenges.ui/ui_challenges.py - it's just
+        # two sliders on the existing tab_challenge_3 placeholder.
+        self.tabWidget.setTabText(2, "Follow Object")
+        self.label_c3_placeholder.setText(
+            "Put an object in front of the robot. It walks forward or backs up "
+            "to stay at the follow distance.")
+        self.label_c3_placeholder.setWordWrap(True)
+
+        def add_slider_row(name, low, high, value):
+            row = QHBoxLayout()
+            row.addWidget(QLabel(name))
+            slider = QSlider(Qt.Horizontal)
+            slider.setRange(low, high)
+            slider.setValue(value)
+            value_label = QLabel(str(value))
+            value_label.setMinimumWidth(30)
+            slider.valueChanged.connect(lambda v: value_label.setText(str(v)))
+            row.addWidget(slider)
+            row.addWidget(value_label)
+            self.verticalLayout_c3.addLayout(row)
+            return slider
+
+        self.slider_follow_distance = add_slider_row("Follow distance (cm)", 15, 80, 30)
+        self.slider_follow_speed = add_slider_row("Speed", 2, 10, 6)
+        self.label_follow_distance = QLabel("")
+        self.verticalLayout_c3.addWidget(self.label_follow_distance)
+        self.verticalLayout_c3.addStretch()
 
     def pickTargetColor(self):
         color = QColorDialog.getColor(QColor(*self.tt_color), self, "Target Color")
@@ -859,6 +889,9 @@ class challengeWindow(QMainWindow, Ui_challenges):
             params = "#" + str(self.slider_stop_distance.value()) \
                      + "#" + "#".join(str(c) for c in self.tt_color) \
                      + "#" + str(self.slider_tt_speed.value())
+        elif challenge == "follow_object":
+            params = "#" + str(self.slider_follow_distance.value()) \
+                     + "#" + str(self.slider_follow_speed.value())
         else:
             params = ""
         command = cmd.CMD_CHALLENGE + "#start#" + challenge + params + '\n'
@@ -893,6 +926,12 @@ class challengeWindow(QMainWindow, Ui_challenges):
                 qr_data = data[3] if len(data) > 3 else ""
                 self.label_status.setText("QR found: " + qr_data)
                 self.label_qr_data.setText(qr_data)
+                return
+            if len(data) > 2 and data[2] == "follow":
+                state = data[3] if len(data) > 3 else ""
+                distance = data[4] if len(data) > 4 else "?"
+                self.label_status.setText("Follow: " + state)
+                self.label_follow_distance.setText("Distance: " + distance + " cm")
                 return
             state = data[2] if len(data) > 2 else ""
             found = data[3] if len(data) > 3 else ""
