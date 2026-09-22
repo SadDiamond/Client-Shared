@@ -509,6 +509,7 @@ class MyWindow(QMainWindow,Ui_client):
                     cmdArray==cmdArray[:-1]
             for oneCmd in cmdArray:
                 data=oneCmd.split("#")
+                print(data)
                 if data=="":
                     self.client.tcp_flag=False
                     break
@@ -811,6 +812,11 @@ class DebugStreamWindow(QMainWindow):
 class challengeWindow(QMainWindow, Ui_challenges):
     # tab index -> challenge id ("" means not implemented yet)
     CHALLENGE_IDS = ["target_tracking", "qr_scan", "", "", ""]
+    # challenge id -> its DebugStreamServer port. Each challenge that runs
+    # one must use its own port - two challenges sharing a port raced
+    # against each other on switch (the old server hadn't always released
+    # the port yet when the new one tried to bind it) and crashed the start.
+    DEBUG_STREAM_PORTS = {"target_tracking": 8090, "qr_scan": 8091}
 
     def __init__(self, client, ip):
         super(challengeWindow, self).__init__()
@@ -846,6 +852,9 @@ class challengeWindow(QMainWindow, Ui_challenges):
         if challenge is None:
             self.label_status.setText("Not yet implemented")
             return
+        if self.debug_window is not None:
+            self.debug_window.close()
+            self.debug_window = None
         if challenge == "target_tracking":
             params = "#" + str(self.slider_stop_distance.value()) \
                      + "#" + "#".join(str(c) for c in self.tt_color) \
@@ -858,10 +867,9 @@ class challengeWindow(QMainWindow, Ui_challenges):
         self.Button_Start.setEnabled(False)
         self.Button_Stop.setEnabled(True)
 
-        # Only target_tracking runs the debug MJPEG stream - qr_scan and
-        # other challenges have no equivalent, nothing to connect to.
-        if challenge == "target_tracking":
-            self.debug_window = DebugStreamWindow(self.ip)
+        debug_port = self.DEBUG_STREAM_PORTS.get(challenge)
+        if debug_port is not None:
+            self.debug_window = DebugStreamWindow(self.ip, port=debug_port)
             self.debug_window.show()
 
     def stop(self):
@@ -884,6 +892,7 @@ class challengeWindow(QMainWindow, Ui_challenges):
             if len(data) > 2 and data[2] == "qr_found":
                 qr_data = data[3] if len(data) > 3 else ""
                 self.label_status.setText("QR found: " + qr_data)
+                self.label_qr_data.setText(qr_data)
                 return
             state = data[2] if len(data) > 2 else ""
             found = data[3] if len(data) > 3 else ""
