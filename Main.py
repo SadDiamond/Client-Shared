@@ -1,6 +1,10 @@
 # -*- coding: utf-8 -*-
 import sys
 import math
+import time
+import urllib.request
+import cv2
+import numpy as np
 from ui_led import Ui_led
 from ui_face import Ui_Face
 from ui_client import Ui_client
@@ -505,7 +509,6 @@ class MyWindow(QMainWindow,Ui_client):
                     cmdArray==cmdArray[:-1]
             for oneCmd in cmdArray:
                 data=oneCmd.split("#")
-                print(data)
                 if data=="":
                     self.client.tcp_flag=False
                     break
@@ -678,7 +681,9 @@ class MyWindow(QMainWindow,Ui_client):
     def showChallengesWindow(self):
         try:
             if self.challengeWindow is None:
-                self.challengeWindow = challengeWindow(self.client)
+                # Read the IP field directly rather than self.IP, which is
+                # only ever set after a successful Connect.
+                self.challengeWindow = challengeWindow(self.client, self.lineEdit_IP_Adress.text())
             self.challengeWindow.show()
             self.challengeWindow.raise_()
             self.challengeWindow.activateWindow()
@@ -704,14 +709,115 @@ class MyWindow(QMainWindow,Ui_client):
             self.Video.setPixmap(QPixmap.fromImage(QImg))
             self.client.video_flag = True
 
+class MjpegStreamThread(QThread):
+    """Reads a raw MJPEG-over-HTTP stream (multipart/x-mixed-replace, as
+    served by target_tracking.py's debug stream) and emits each decoded
+    frame as a BGR numpy array. Runs off the GUI thread since it blocks on
+    network reads for as long as the stream stays open."""
+    frame_ready = pyqtSignal(np.ndarray)
+    error = pyqtSignal(str)
+
+    def __init__(self, url):
+        super().__init__()
+        self.url = url
+        self._stop_requested = False
+
+    def request_stop(self):
+        self._stop_requested = True
+
+    def run(self):
+        # The debug stream server only starts binding its port partway
+        # through TargetTracker's startup (after camera setup) - trying to
+        # connect immediately after sending the start command can land in
+        # that ~1-2s gap and get "connection refused" even though the stream
+        # comes up fine a moment later. Retry instead of failing on attempt 1.
+        response = None
+        last_error = None
+        for attempt in range(10):
+            if self._stop_requested:
+                return
+            try:
+                response = urllib.request.urlopen(self.url, timeout=2)
+                break
+            except Exception as e:
+                last_error = e
+                time.sleep(0.5)
+        if response is None:
+            self.error.emit(str(last_error))
+            return
+
+        buffer = b""
+        try:
+            while not self._stop_requested:
+                chunk = response.read(4096)
+                if not chunk:
+                    break
+                buffer += chunk
+                # Pull out complete JPEGs by their SOI/EOI markers directly -
+                # simpler and more robust than parsing multipart boundary
+                # headers, and works regardless of exact header formatting.
+                while True:
+                    start = buffer.find(b'\xff\xd8')
+                    end = buffer.find(b'\xff\xd9')
+                    if start == -1 or end == -1 or end < start:
+                        break
+                    jpg_bytes = buffer[start:end + 2]
+                    buffer = buffer[end + 2:]
+                    frame = cv2.imdecode(np.frombuffer(jpg_bytes, dtype=np.uint8), cv2.IMREAD_COLOR)
+                    if frame is not None:
+                        self.frame_ready.emit(frame)
+        except Exception as e:
+            self.error.emit(str(e))
+        finally:
+            try:
+                response.close()
+            except Exception:
+                pass
+
+
+class DebugStreamWindow(QMainWindow):
+    """Native window showing the tracker's live debug MJPEG stream, instead
+    of needing a separate browser tab pointed at the Pi. Only target_tracking
+    runs this stream - qr_scan and other challenges have no equivalent."""
+
+    def __init__(self, ip, port=8090):
+        super().__init__()
+        self.setWindowTitle("Tracking Debug View")
+        self.resize(680, 520)
+        self.label = QLabel("Connecting to debug stream...")
+        self.label.setAlignment(Qt.AlignCenter)
+        self.setCentralWidget(self.label)
+
+        self.thread = MjpegStreamThread(f"http://{ip}:{port}/")
+        self.thread.frame_ready.connect(self.on_frame)
+        self.thread.error.connect(self.on_error)
+        self.thread.start()
+
+    def on_frame(self, frame_bgr):
+        rgb = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB)
+        height, width, _ = rgb.shape
+        qimg = QImage(rgb.data.tobytes(), width, height, 3 * width, QImage.Format_RGB888)
+        self.label.setPixmap(QPixmap.fromImage(qimg))
+
+    def on_error(self, message):
+        self.label.setText("Debug stream error: " + message)
+
+    def closeEvent(self, event):
+        self.thread.request_stop()
+        self.thread.wait(2000)
+        event.accept()
+
+
 class challengeWindow(QMainWindow, Ui_challenges):
     # tab index -> challenge id ("" means not implemented yet)
     CHALLENGE_IDS = ["target_tracking", "qr_scan", "", "", ""]
 
-    def __init__(self, client):
+    def __init__(self, client, ip):
         super(challengeWindow, self).__init__()
         self.setupUi(self)
         self.client = client
+        self.ip = ip
+        self.debug_window = None
         self.setWindowIcon(QIcon('Picture/logo_Mini.png'))
 
         self.tt_color = [255, 0, 0]
@@ -752,16 +858,38 @@ class challengeWindow(QMainWindow, Ui_challenges):
         self.Button_Start.setEnabled(False)
         self.Button_Stop.setEnabled(True)
 
+        # Only target_tracking runs the debug MJPEG stream - qr_scan and
+        # other challenges have no equivalent, nothing to connect to.
+        if challenge == "target_tracking":
+            self.debug_window = DebugStreamWindow(self.ip)
+            self.debug_window.show()
+
     def stop(self):
         command = cmd.CMD_CHALLENGE + "#stop" + '\n'
         self.client.send_data(command)
         self.label_status.setText("Stopping...")
 
+        if self.debug_window is not None:
+            self.debug_window.close()
+            self.debug_window = None
+
     def on_server_message(self, data):
         # data is the split reply, e.g. ['CMD_CHALLENGE', 'started', 'target_tracking']
+        # or a live status update: ['CMD_CHALLENGE', 'status', '<state>', '<found 1/0>']
+        # or a QR result: ['CMD_CHALLENGE', 'status', 'qr_found', '<decoded data>']
         if len(data) < 2:
             return
         status = data[1]
+        if status == "status":
+            if len(data) > 2 and data[2] == "qr_found":
+                qr_data = data[3] if len(data) > 3 else ""
+                self.label_status.setText("QR found: " + qr_data)
+                return
+            state = data[2] if len(data) > 2 else ""
+            found = data[3] if len(data) > 3 else ""
+            found_text = "FOUND" if found == "1" else "searching..."
+            self.label_status.setText(found_text + " (" + state + ")")
+            return
         detail = data[2] if len(data) > 2 else ""
         self.label_status.setText((status + " " + detail).strip())
         if status == "started":

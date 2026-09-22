@@ -48,9 +48,12 @@ class Client:
         try:
             self.client_socket.connect((ip, 8002))
             self.connection = self.client_socket.makefile('rb')
-        except:
-            #print ("command port connect failed")
-            pass
+        except Exception as e:
+            # Falling through to self.connection.read(4) below with
+            # self.connection never set crashes with AttributeError instead
+            # of failing cleanly.
+            print(f"video port connect failed: {e}")
+            return
         while True:
             try:
                 stream_bytes= self.connection.read(4)
