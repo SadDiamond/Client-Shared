@@ -1,6 +1,9 @@
 # -*- coding: utf-8 -*-
 import sys
+import os
+import csv
 import math
+from datetime import datetime
 import time
 import urllib.request
 import cv2
@@ -9,6 +12,7 @@ from ui_led import Ui_led
 from ui_face import Ui_Face
 from ui_client import Ui_client
 from ui_challenges import Ui_challenges
+from radar_view import RadarWidget, Radar3DWidget
 from PyQt5 import QtCore, QtGui, QtWidgets
 from PyQt5.QtCore import *
 from PyQt5.QtWidgets import *
@@ -811,7 +815,11 @@ class DebugStreamWindow(QMainWindow):
 
 class challengeWindow(QMainWindow, Ui_challenges):
     # tab index -> challenge id ("" means not implemented yet)
-    CHALLENGE_IDS = ["target_tracking", "qr_scan", "follow_object", "", ""]
+    CHALLENGE_IDS = ["target_tracking", "qr_scan", "follow_object", "dance", "radar"]
+    RADAR_SAVE_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "radar_scans")
+    # Server messages arrive on the client's network thread; this hands them
+    # to the Qt (GUI) thread, which is the only one allowed to touch widgets.
+    server_message = pyqtSignal(list)
     # challenge id -> its DebugStreamServer port. Each challenge that runs
     # one must use its own port - two challenges sharing a port raced
     # against each other on switch (the old server hadn't always released
@@ -836,6 +844,9 @@ class challengeWindow(QMainWindow, Ui_challenges):
             lambda v: self.label_tt_speed_value.setText(str(v)))
         self.Button_TT_Color.clicked.connect(self.pickTargetColor)
         self.setupFollowObjectTab()
+        self.setupDanceTab()
+        self.setupRadarTab()
+        self.server_message.connect(self.handle_server_message)
 
     def setupFollowObjectTab(self):
         # Built here rather than in Challenges.ui/ui_challenges.py - it's just
@@ -846,25 +857,146 @@ class challengeWindow(QMainWindow, Ui_challenges):
             "to stay at the follow distance.")
         self.label_c3_placeholder.setWordWrap(True)
 
-        def add_slider_row(name, low, high, value):
-            row = QHBoxLayout()
-            row.addWidget(QLabel(name))
-            slider = QSlider(Qt.Horizontal)
-            slider.setRange(low, high)
-            slider.setValue(value)
-            value_label = QLabel(str(value))
-            value_label.setMinimumWidth(30)
-            slider.valueChanged.connect(lambda v: value_label.setText(str(v)))
-            row.addWidget(slider)
-            row.addWidget(value_label)
-            self.verticalLayout_c3.addLayout(row)
-            return slider
-
-        self.slider_follow_distance = add_slider_row("Follow distance (cm)", 15, 80, 30)
-        self.slider_follow_speed = add_slider_row("Speed", 2, 10, 6)
+        self.slider_follow_distance = self.addSliderRow(self.verticalLayout_c3, "Follow distance (cm)", 15, 80, 30)
+        self.slider_follow_speed = self.addSliderRow(self.verticalLayout_c3, "Speed", 2, 10, 6)
         self.label_follow_distance = QLabel("")
         self.verticalLayout_c3.addWidget(self.label_follow_distance)
         self.verticalLayout_c3.addStretch()
+
+    def addSliderRow(self, layout, name, low, high, value):
+        row = QHBoxLayout()
+        row.addWidget(QLabel(name))
+        slider = QSlider(Qt.Horizontal)
+        slider.setRange(low, high)
+        slider.setValue(value)
+        value_label = QLabel(str(value))
+        value_label.setMinimumWidth(30)
+        slider.valueChanged.connect(lambda v: value_label.setText(str(v)))
+        row.addWidget(slider)
+        row.addWidget(value_label)
+        layout.addLayout(row)
+        return slider
+
+    # Display name -> dance id the server knows (dance_routines.DANCES).
+    DANCES = [("Wiggle", "wiggle"), ("Headbang", "headbang"), ("Twist & Spin", "twist"),
+              ("Body Circles", "circle"), ("Push-ups", "pushups"), ("Party Mix (all)", "mix")]
+
+    def setupRadarTab(self):
+        self.tabWidget.setTabText(4, "Radar")
+        self.label_c5_placeholder.setText("Sweeps the head's distance sensor and maps what it sees. "
+                                          "Each finished scan is saved to radar_scans/.")
+        self.label_c5_placeholder.setWordWrap(True)
+        row = QHBoxLayout()
+        row.addWidget(QLabel("Mode"))
+        self.combo_radar_mode = QComboBox()
+        self.combo_radar_mode.addItems(["2D sweep", "3D ping scan"])
+        self.combo_radar_mode.currentIndexChanged.connect(self.radarModeChanged)
+        row.addWidget(self.combo_radar_mode, 1)
+        self.verticalLayout_c5.addLayout(row)
+        self.radar_widget = RadarWidget()
+        self.radar3d_widget = Radar3DWidget()
+        self.radar3d_raw = []
+        self.radar_stack = QStackedWidget()
+        self.radar_stack.setMinimumHeight(300)
+        self.radar_stack.addWidget(self.radar_widget)
+        self.radar_stack.addWidget(self.radar3d_widget)
+        self.verticalLayout_c5.addWidget(self.radar_stack, 1)
+        self.label_radar_objects = QLabel("")
+        self.label_radar_objects.setWordWrap(True)
+        self.verticalLayout_c5.addWidget(self.label_radar_objects)
+        # Step: angle between readings in 2D, spacing between tilt rows in 3D
+        self.slider_radar_step = self.addSliderRow(self.verticalLayout_c5, "Step (deg)", 2, 15, 5)
+        self.slider_radar_sweeps = self.addSliderRow(self.verticalLayout_c5, "Sweeps (2D)", 1, 6, 3)
+        self.slider_radar_speed = self.addSliderRow(self.verticalLayout_c5, "Sweep speed", 1, 10, 5)
+        self.slider_radar_range = self.addSliderRow(self.verticalLayout_c5, "Max range (cm)", 50, 300, 150)
+        self.slider_radar_range.valueChanged.connect(self.radarRangeChanged)
+        row = QHBoxLayout()
+        self.label_radar_saved = QLabel("")
+        self.label_radar_saved.setWordWrap(True)
+        row.addWidget(self.label_radar_saved, 1)
+        button_open = QPushButton("Open Folder")
+        button_open.clicked.connect(self.openRadarFolder)
+        row.addWidget(button_open)
+        self.verticalLayout_c5.addLayout(row)
+
+    def radar3d(self):
+        return self.combo_radar_mode.currentIndex() == 1
+
+    def activeRadarView(self):
+        return self.radar3d_widget if self.radar3d() else self.radar_widget
+
+    def radarModeChanged(self, index):
+        self.radar_stack.setCurrentIndex(index)
+        self.slider_radar_sweeps.setEnabled(index == 0)
+        # 3D rows every 5 deg is ~14 rows / ~40s; 8 is a quicker default.
+        self.slider_radar_step.setValue(8 if index == 1 else 5)
+        self.showRadarObjects()
+
+    def radarRangeChanged(self, cm):
+        self.radar_widget.set_max_range(cm)
+        self.radar3d_widget.set_max_range(cm)
+        self.showRadarObjects()
+
+    def showRadarObjects(self):
+        view = self.activeRadarView()
+        objects = view.update_objects()
+        if objects:
+            self.label_radar_objects.setText("\n".join(o.summary(self.radar3d()) for o in objects))
+        else:
+            self.label_radar_objects.setText("")
+
+    def openRadarFolder(self):
+        os.makedirs(self.RADAR_SAVE_DIR, exist_ok=True)
+        QDesktopServices.openUrl(QUrl.fromLocalFile(self.RADAR_SAVE_DIR))
+
+    def objectLabelFor(self, objects, xyz):
+        for obj in objects:
+            if xyz in obj.points:
+                return obj.label
+        return ""
+
+    def saveRadarScan(self):
+        three_d = self.radar3d()
+        view = self.activeRadarView()
+        if (three_d and not view.pings) or (not three_d and not view.points()):
+            self.label_radar_saved.setText("No readings - nothing saved.")
+            return
+        self.showRadarObjects()
+        os.makedirs(self.RADAR_SAVE_DIR, exist_ok=True)
+        stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        base = os.path.join(self.RADAR_SAVE_DIR, ("radar3d_" if three_d else "radar_") + stamp)
+        view.to_image().save(base + ".png")
+        with open(base + ".csv", "w", newline="") as f:
+            writer = csv.writer(f)
+            if three_d:
+                writer.writerow(["pan_deg", "tilt_deg", "distance_cm", "x_cm", "y_cm", "z_cm", "object"])
+                for (pan, tilt, cm), (x, y, z, _, _) in zip(self.radar3d_raw, view.pings):
+                    label = self.objectLabelFor(view.objects, (x, y, z))
+                    writer.writerow([pan, tilt, cm, round(x, 1), round(y, 1), round(z, 1), label])
+            else:
+                writer.writerow(["bearing_deg", "distance_cm", "all_readings_cm"])
+                for bearing, distance in view.points():
+                    writer.writerow([bearing, distance, " ".join(str(v) for v in view.readings[bearing])])
+        with open(base + "_objects.txt", "w") as f:
+            f.write(view.title + "\n\n")
+            f.write("\n".join(o.summary(three_d) for o in view.objects) or "No objects found.")
+            f.write("\n")
+        self.label_radar_saved.setText("Saved " + os.path.basename(base) + " (.png, .csv, _objects.txt)")
+
+    def setupDanceTab(self):
+        self.tabWidget.setTabText(3, "Dance")
+        self.label_c4_placeholder.setText("Pick a dance and press Start.")
+        row = QHBoxLayout()
+        row.addWidget(QLabel("Dance"))
+        self.combo_dance = QComboBox()
+        for label, _ in self.DANCES:
+            self.combo_dance.addItem(label)
+        row.addWidget(self.combo_dance)
+        self.verticalLayout_c4.addLayout(row)
+        self.slider_dance_tempo = self.addSliderRow(self.verticalLayout_c4, "Tempo", 1, 10, 5)
+        self.check_dance_loop = QCheckBox("Repeat until Stop")
+        self.verticalLayout_c4.addWidget(self.check_dance_loop)
+        self.verticalLayout_c4.addStretch()
 
     def pickTargetColor(self):
         color = QColorDialog.getColor(QColor(*self.tt_color), self, "Target Color")
@@ -892,6 +1024,24 @@ class challengeWindow(QMainWindow, Ui_challenges):
         elif challenge == "follow_object":
             params = "#" + str(self.slider_follow_distance.value()) \
                      + "#" + str(self.slider_follow_speed.value())
+        elif challenge == "radar":
+            three_d = self.radar3d()
+            params = "#" + str(self.slider_radar_step.value()) \
+                     + "#" + str(self.slider_radar_sweeps.value()) \
+                     + "#" + str(self.slider_radar_speed.value()) \
+                     + "#" + ("3d" if three_d else "2d")
+            view = self.activeRadarView()
+            view.clear()
+            view.title = ("3D ping scan " if three_d else "Radar scan ") + datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            self.radar3d_raw = []  # (pan, tilt, cm) as received, for the CSV
+            self.radar3d_widget.row_step = self.slider_radar_step.value()
+            self.combo_radar_mode.setEnabled(False)
+            self.label_radar_saved.setText("")
+            self.label_radar_objects.setText("")
+        elif challenge == "dance":
+            params = "#" + self.DANCES[self.combo_dance.currentIndex()][1] \
+                     + "#" + str(self.slider_dance_tempo.value()) \
+                     + "#" + ("1" if self.check_dance_loop.isChecked() else "0")
         else:
             params = ""
         command = cmd.CMD_CHALLENGE + "#start#" + challenge + params + '\n'
@@ -915,6 +1065,9 @@ class challengeWindow(QMainWindow, Ui_challenges):
             self.debug_window = None
 
     def on_server_message(self, data):
+        self.server_message.emit(data)
+
+    def handle_server_message(self, data):
         # data is the split reply, e.g. ['CMD_CHALLENGE', 'started', 'target_tracking']
         # or a live status update: ['CMD_CHALLENGE', 'status', '<state>', '<found 1/0>']
         # or a QR result: ['CMD_CHALLENGE', 'status', 'qr_found', '<decoded data>']
@@ -933,6 +1086,38 @@ class challengeWindow(QMainWindow, Ui_challenges):
                 self.label_status.setText("Follow: " + state)
                 self.label_follow_distance.setText("Distance: " + distance + " cm")
                 return
+            if len(data) > 2 and data[2] == "radar_point":
+                try:
+                    bearing, distance = int(data[3]), float(data[4])
+                except (IndexError, ValueError):
+                    return  # a message split across two TCP reads - skip it
+                self.radar_widget.add_point(bearing, distance)
+                self.label_status.setText("Scanning... %d\u00b0: %s cm" % (bearing, distance))
+                return
+            if len(data) > 2 and data[2] == "radar_point3":
+                try:
+                    pan, tilt, distance = float(data[3]), float(data[4]), float(data[5])
+                except (IndexError, ValueError):
+                    return  # a message split across two TCP reads - skip it
+                self.radar3d_raw.append((pan, tilt, distance))
+                self.radar3d_widget.add_point(pan, tilt, distance)
+                return
+            if len(data) > 2 and data[2] == "radar_row":
+                if len(data) > 4:
+                    self.label_status.setText("Scanning row %s of %s..." % (data[3], data[4]))
+                return
+            if len(data) > 2 and data[2] == "radar_done":
+                self.combo_radar_mode.setEnabled(True)
+                self.saveRadarScan()
+                return
+            if len(data) > 2 and data[2] == "radar_cancelled":
+                self.combo_radar_mode.setEnabled(True)
+                self.showRadarObjects()
+                self.label_radar_saved.setText("Scan stopped early - not saved.")
+                return
+            if len(data) > 2 and data[2] == "dance":
+                self.label_status.setText("Dancing: " + (data[3] if len(data) > 3 else ""))
+                return
             state = data[2] if len(data) > 2 else ""
             found = data[3] if len(data) > 3 else ""
             found_text = "FOUND" if found == "1" else "searching..."
@@ -946,6 +1131,7 @@ class challengeWindow(QMainWindow, Ui_challenges):
         elif status in ("stopped", "error"):
             self.Button_Start.setEnabled(True)
             self.Button_Stop.setEnabled(False)
+            self.combo_radar_mode.setEnabled(True)
 
 class faceWindow(QMainWindow,Ui_Face):
     def __init__(self,client):
